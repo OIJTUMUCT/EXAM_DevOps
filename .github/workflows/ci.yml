@@ -7,6 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
+
   ml-pipeline:
     runs-on: ubuntu-latest
 
@@ -36,16 +37,14 @@ jobs:
             reports/
             models/
 
-      - name: List MLflow runs (для отладки)
+      - name: List MLflow runs (debug)
         run: |
           find ./mlruns -type f -name "meta.yaml" | head -5
+
 
   build-and-push-image:
     needs: ml-pipeline
     runs-on: ubuntu-latest
-
-    outputs:
-      image_tag: ${{ steps.meta.outputs.image_tag }}
 
     steps:
       - name: Checkout code
@@ -57,11 +56,9 @@ jobs:
           name: ml-artifacts
           path: .
 
-      - name: Docker meta (set image tag)
-        id: meta
+      - name: Set IMAGE_TAG
         run: |
           IMAGE="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/iris-api:${GITHUB_SHA}"
-          echo "image_tag=${IMAGE}" >> "$GITHUB_OUTPUT"
           echo "IMAGE_TAG=${IMAGE}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
@@ -78,15 +75,11 @@ jobs:
             cr.yandex
 
       - name: Build Docker image
-        run: |
-          docker build \
-            --file Dockerfile \
-            --tag "$IMAGE_TAG" \
-            .
+        run: docker build -t "$IMAGE_TAG" .
 
       - name: Push Docker image
-        run: |
-          docker push "$IMAGE_TAG"
+        run: docker push "$IMAGE_TAG"
+
 
   terraform-deploy:
     needs: build-and-push-image
@@ -101,7 +94,7 @@ jobs:
       FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
       REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
       SERVICE_ACCOUNT_ID: ${{ secrets.YC_SERVICE_ACCOUNT_ID }}
-      IMAGE_TAG: ${{ needs.build-and-push-image.outputs.image_tag }}
+      IMAGE_TAG: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/iris-api:${{ github.sha }}
 
     steps:
       - name: Checkout code
@@ -116,11 +109,14 @@ jobs:
         env:
           YC_SA_JSON_KEY: ${{ secrets.YC_SA_JSON_KEY }}
         run: |
-          echo "$YC_SA_JSON_KEY" > sa-key.json
+          echo "$YC_SA_JSON_KEY" > key.json
+
+      - name: Debug image tag
+        run: |
+          echo "Using image tag: ${IMAGE_TAG}"
 
       - name: Terraform init
-        run: |
-          terraform init
+        run: terraform init
 
       - name: Terraform plan
         run: |
