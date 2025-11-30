@@ -1,5 +1,7 @@
 __pycache__/
 app/__pycache__/
+key.json
+infra/terraform.tfvars
 *.pyc
 .venv/
 .ipynb_checkpoints/

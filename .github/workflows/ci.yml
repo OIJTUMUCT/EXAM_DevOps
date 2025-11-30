@@ -1,0 +1,139 @@
+name: ML Pipeline & Deploy
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  ml-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run ML pipeline
+        run: |
+          python scripts/ml_pipeline.py
+
+      - name: Upload ML artifacts (reports + model)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ml-artifacts
+          path: |
+            reports/
+            models/
+
+      - name: List MLflow runs (для отладки)
+        run: |
+          find ./mlruns -type f -name "meta.yaml" | head -5
+
+  build-and-push-image:
+    needs: ml-pipeline
+    runs-on: ubuntu-latest
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore ML artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ml-artifacts
+          path: .
+
+      - name: Docker meta (set image tag)
+        id: meta
+        run: |
+          IMAGE="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/iris-api:${GITHUB_SHA}"
+          echo "image_tag=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_TAG=${IMAGE}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Yandex Container Registry
+        env:
+          YC_SA_JSON_KEY: ${{ secrets.YC_SA_JSON_KEY }}
+        run: |
+          echo "$YC_SA_JSON_KEY" > sa-key.json
+          cat sa-key.json | docker login \
+            --username json_key \
+            --password-stdin \
+            cr.yandex
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --file Dockerfile \
+            --tag "$IMAGE_TAG" \
+            .
+
+      - name: Push Docker image
+        run: |
+          docker push "$IMAGE_TAG"
+
+  terraform-deploy:
+    needs: build-and-push-image
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+      REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+      SERVICE_ACCOUNT_ID: ${{ secrets.YC_SERVICE_ACCOUNT_ID }}
+      IMAGE_TAG: ${{ needs.build-and-push-image.outputs.image_tag }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Prepare service account key
+        env:
+          YC_SA_JSON_KEY: ${{ secrets.YC_SA_JSON_KEY }}
+        run: |
+          echo "$YC_SA_JSON_KEY" > sa-key.json
+
+      - name: Terraform init
+        run: |
+          terraform init
+
+      - name: Terraform plan
+        run: |
+          terraform plan \
+            -var "folder_id=${FOLDER_ID}" \
+            -var "registry_id=${REGISTRY_ID}" \
+            -var "service_account_id=${SERVICE_ACCOUNT_ID}" \
+            -var "image_tag=${IMAGE_TAG}"
+
+      - name: Terraform apply
+        run: |
+          terraform apply -auto-approve \
+            -var "folder_id=${FOLDER_ID}" \
+            -var "registry_id=${REGISTRY_ID}" \
+            -var "service_account_id=${SERVICE_ACCOUNT_ID}" \
+            -var "image_tag=${IMAGE_TAG}"
