@@ -11,6 +11,7 @@ ml_pipeline:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_PIPELINE_SOURCE == "web"'
     - when: manual
+
   script:
     - python -m pip install --upgrade pip
     - pip install -r requirements.txt
@@ -22,6 +23,7 @@ ml_pipeline:
       - models/
       - mlruns/
     expire_in: 1 week
+
 
 deploy:
   stage: deploy
@@ -43,25 +45,26 @@ deploy:
     TF_INPUT: "false"
 
   script:
-    - echo "Logging in to Yandex Container Registry..."
+    # Login to YC Registry
     - echo "$YC_SA_JSON_KEY" > sa-key.json
-    - cat sa-key.json | docker login \
-        --username json_key \
-        --password-stdin \
-        cr.yandex
+    - cat sa-key.json | docker login --username json_key --password-stdin cr.yandex
 
+    # Build image tag
     - export IMAGE_TAG="cr.yandex/${YC_REGISTRY_ID}/iris-api:${CI_COMMIT_SHORT_SHA}"
     - echo "Using image tag $IMAGE_TAG"
 
+    # Build & Push
     - docker build -f Dockerfile -t "$IMAGE_TAG" .
     - docker push "$IMAGE_TAG"
 
+    # Install Terraform
     - apk add --no-cache curl unzip
     - curl -fsSL "https://releases.hashicorp.com/terraform/1.9.8/terraform_1.9.8_linux_amd64.zip" -o terraform.zip
     - unzip terraform.zip
     - mv terraform /usr/local/bin/terraform
     - terraform version
 
+    # Terraform Deploy
     - cd infra
     - echo "$YC_SA_JSON_KEY" > sa-key.json
     - terraform init
