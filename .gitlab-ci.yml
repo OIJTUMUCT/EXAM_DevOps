@@ -1,0 +1,88 @@
+stages:
+  - ml
+  - deploy
+
+ml_pipeline:
+  stage: ml
+  image: python:3.11
+
+  rules:
+    # запуск при push в main
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    # запуск при merge request
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    # запуск вручную через Web → Run pipeline
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    # запуск вручную кнопкой "play"
+    - when: manual
+  script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - python scripts/ml_pipeline.py
+
+  artifacts:
+    paths:
+      - reports/
+      - models/
+      - mlruns/
+    expire_in: 1 week
+
+deploy:
+  stage: deploy
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+
+  needs:
+    - job: ml_pipeline
+      artifacts: true
+
+  only:
+    - main
+
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    TF_IN_AUTOMATION: "true"
+    TF_INPUT: "false"
+
+  script:
+    # Login to Yandex Container Registry
+    - echo "Logging in to Yandex Container Registry..."
+    - echo "$YC_SA_JSON_KEY" > sa-key.json
+    - cat sa-key.json | docker login \
+        --username json_key \
+        --password-stdin \
+        cr.yandex
+
+    # Build image tag
+    - export IMAGE_TAG="cr.yandex/${YC_REGISTRY_ID}/iris-api:${CI_COMMIT_SHORT_SHA}"
+    - echo "Using image tag: $IMAGE_TAG"
+
+    # Build and push Docker image
+    - docker build -f Dockerfile -t "$IMAGE_TAG" .
+    - docker push "$IMAGE_TAG"
+
+    # Install Terraform
+    - apk add --no-cache curl unzip
+    - curl -fsSL "https://releases.hashicorp.com/terraform/1.9.8/terraform_1.9.8_linux_amd64.zip" -o terraform.zip
+    - unzip terraform.zip
+    - mv terraform /usr/local/bin/terraform
+    - terraform version
+
+    # Terraform actions
+    - cd infra
+    - echo "$YC_SA_JSON_KEY" > sa-key.json
+    - terraform init
+
+    - terraform plan \
+        -var "folder_id=${YC_FOLDER_ID}" \
+        -var "registry_id=${YC_REGISTRY_ID}" \
+        -var "service_account_id=${YC_SERVICE_ACCOUNT_ID}" \
+        -var "image_tag=${IMAGE_TAG}"
+
+    - terraform apply -auto-approve \
+        -var "folder_id=${YC_FOLDER_ID}" \
+        -var "registry_id=${YC_REGISTRY_ID}" \
+        -var "service_account_id=${YC_SERVICE_ACCOUNT_ID}" \
+        -var "image_tag=${IMAGE_TAG}"
