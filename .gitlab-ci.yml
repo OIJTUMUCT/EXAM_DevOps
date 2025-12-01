@@ -28,8 +28,6 @@ ml_pipeline:
 deploy:
   stage: deploy
   image: docker:24.0.5
-  services:
-    - docker:24.0.5-dind
 
   needs:
     - job: ml_pipeline
@@ -39,12 +37,13 @@ deploy:
     - main
 
   variables:
-    DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
     TF_IN_AUTOMATION: "true"
     TF_INPUT: "false"
 
   script:
+    - docker info
+
     # Login to YC Registry
     - echo "$YC_SA_JSON_KEY" > sa-key.json
     - cat sa-key.json | docker login --username json_key --password-stdin cr.yandex
