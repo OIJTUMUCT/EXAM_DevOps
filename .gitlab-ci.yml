@@ -11,6 +11,7 @@ ml_pipeline:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_PIPELINE_SOURCE == "web"'
     - when: manual
+
   script:
     - python -m pip install --upgrade pip
     - pip install -r requirements.txt
@@ -45,7 +46,8 @@ deploy:
   script:
     - echo "Logging in to Yandex Container Registry..."
     - echo "$YC_SA_JSON_KEY" > sa-key.json
-    - cat sa-key.json | docker login \
+    - |
+      cat sa-key.json | docker login \
         --username json_key \
         --password-stdin \
         cr.yandex
@@ -66,14 +68,5 @@ deploy:
     - echo "$YC_SA_JSON_KEY" > sa-key.json
     - terraform init
 
-    - terraform plan \
-        -var "folder_id=${YC_FOLDER_ID}" \
-        -var "registry_id=${YC_REGISTRY_ID}" \
-        -var "service_account_id=${YC_SERVICE_ACCOUNT_ID}" \
-        -var "image_tag=${IMAGE_TAG}"
-
-    - terraform apply -auto-approve \
-        -var "folder_id=${YC_FOLDER_ID}" \
-        -var "registry_id=${YC_REGISTRY_ID}" \
-        -var "service_account_id=${YC_SERVICE_ACCOUNT_ID}" \
-        -var "image_tag=${IMAGE_TAG}"
+    - terraform plan -var "folder_id=${YC_FOLDER_ID}" -var "registry_id=${YC_REGISTRY_ID}" -var "service_account_id=${YC_SERVICE_ACCOUNT_ID}" -var "image_tag=${IMAGE_TAG}"
+    - terraform apply -auto-approve -var "folder_id=${YC_FOLDER_ID}" -var "registry_id=${YC_REGISTRY_ID}" -var "service_account_id=${YC_SERVICE_ACCOUNT_ID}" -var "image_tag=${IMAGE_TAG}"
