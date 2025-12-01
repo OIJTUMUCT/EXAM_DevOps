@@ -7,13 +7,9 @@ ml_pipeline:
   image: python:3.11
 
   rules:
-    # запуск при push в main
     - if: '$CI_COMMIT_BRANCH == "main"'
-    # запуск при merge request
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    # запуск вручную через Web → Run pipeline
     - if: '$CI_PIPELINE_SOURCE == "web"'
-    # запуск вручную кнопкой "play"
     - when: manual
   script:
     - python -m pip install --upgrade pip
@@ -47,7 +43,6 @@ deploy:
     TF_INPUT: "false"
 
   script:
-    # Login to Yandex Container Registry
     - echo "Logging in to Yandex Container Registry..."
     - echo "$YC_SA_JSON_KEY" > sa-key.json
     - cat sa-key.json | docker login \
@@ -55,22 +50,18 @@ deploy:
         --password-stdin \
         cr.yandex
 
-    # Build image tag
     - export IMAGE_TAG="cr.yandex/${YC_REGISTRY_ID}/iris-api:${CI_COMMIT_SHORT_SHA}"
     - echo "Using image tag: $IMAGE_TAG"
 
-    # Build and push Docker image
     - docker build -f Dockerfile -t "$IMAGE_TAG" .
     - docker push "$IMAGE_TAG"
 
-    # Install Terraform
     - apk add --no-cache curl unzip
     - curl -fsSL "https://releases.hashicorp.com/terraform/1.9.8/terraform_1.9.8_linux_amd64.zip" -o terraform.zip
     - unzip terraform.zip
     - mv terraform /usr/local/bin/terraform
     - terraform version
 
-    # Terraform actions
     - cd infra
     - echo "$YC_SA_JSON_KEY" > sa-key.json
     - terraform init
