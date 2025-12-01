@@ -11,7 +11,6 @@ ml_pipeline:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_PIPELINE_SOURCE == "web"'
     - when: manual
-
   script:
     - python -m pip install --upgrade pip
     - pip install -r requirements.txt
@@ -46,14 +45,13 @@ deploy:
   script:
     - echo "Logging in to Yandex Container Registry..."
     - echo "$YC_SA_JSON_KEY" > sa-key.json
-    - |
-      cat sa-key.json | docker login \
+    - cat sa-key.json | docker login \
         --username json_key \
         --password-stdin \
         cr.yandex
 
     - export IMAGE_TAG="cr.yandex/${YC_REGISTRY_ID}/iris-api:${CI_COMMIT_SHORT_SHA}"
-    - echo "Using image tag: $IMAGE_TAG"
+    - echo "Using image tag $IMAGE_TAG"
 
     - docker build -f Dockerfile -t "$IMAGE_TAG" .
     - docker push "$IMAGE_TAG"
@@ -68,5 +66,14 @@ deploy:
     - echo "$YC_SA_JSON_KEY" > sa-key.json
     - terraform init
 
-    - terraform plan -var "folder_id=${YC_FOLDER_ID}" -var "registry_id=${YC_REGISTRY_ID}" -var "service_account_id=${YC_SERVICE_ACCOUNT_ID}" -var "image_tag=${IMAGE_TAG}"
-    - terraform apply -auto-approve -var "folder_id=${YC_FOLDER_ID}" -var "registry_id=${YC_REGISTRY_ID}" -var "service_account_id=${YC_SERVICE_ACCOUNT_ID}" -var "image_tag=${IMAGE_TAG}"
+    - terraform plan \
+        -var "folder_id=${YC_FOLDER_ID}" \
+        -var "registry_id=${YC_REGISTRY_ID}" \
+        -var "service_account_id=${YC_SERVICE_ACCOUNT_ID}" \
+        -var "image_tag=${IMAGE_TAG}"
+
+    - terraform apply -auto-approve \
+        -var "folder_id=${YC_FOLDER_ID}" \
+        -var "registry_id=${YC_REGISTRY_ID}" \
+        -var "service_account_id=${YC_SERVICE_ACCOUNT_ID}" \
+        -var "image_tag=${IMAGE_TAG}"
