@@ -61,22 +61,23 @@ deploy:
     - apk add --no-cache curl unzip bash
 
     # Install Terraform latest (supports 1.14.0)
-    - curl -fsSL https://get.hashicorp.com/install.sh | sh -s terraform
-
-    - terraform version
+    - echo '@community https://dl-cdn.alpinelinux.org/alpine/edge/community' >> /etc/apk/repositories
+    - apk update
+    - apk add --no-cache opentofu@community
+    - tofu version
 
     # Terraform Deploy
     - cd infra
     - echo "$YC_SA_JSON_KEY" > sa-key.json
-    - terraform init
+    - tofu init
 
-    - terraform plan \
+    - tofu plan \
         -var "folder_id=${YC_FOLDER_ID}" \
         -var "registry_id=${YC_REGISTRY_ID}" \
         -var "service_account_id=${YC_SERVICE_ACCOUNT_ID}" \
         -var "image_tag=${IMAGE_TAG}"
 
-    - terraform apply -auto-approve \
+    - tofu apply -auto-approve \
         -var "folder_id=${YC_FOLDER_ID}" \
         -var "registry_id=${YC_REGISTRY_ID}" \
         -var "service_account_id=${YC_SERVICE_ACCOUNT_ID}" \
