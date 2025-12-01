@@ -58,10 +58,7 @@ deploy:
     - docker push "$IMAGE_TAG"
 
     # Install Terraform
-    - apk add --no-cache curl unzip
-    - curl -fsSL "https://releases.hashicorp.com/terraform/1.9.8/terraform_1.9.8_linux_amd64.zip" -o terraform.zip
-    - unzip terraform.zip
-    - mv terraform /usr/local/bin/terraform
+    - apk add --no-cache curl unzip terraform
     - terraform version
 
     # Terraform Deploy
